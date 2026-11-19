@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Настраиваем CORS, чтобы Android-магнитола могла отправлять запросы
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -13,14 +12,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Берём секретный ключ из переменных окружения Vercel
-    const apiKey = process.env.GROQ_API_KEY;
+    const model = req.body?.model || '';
+    const isGemini = model.startsWith('gemini-');
+
+    // Выбираем целевой URL и ключ в зависимости от запрошенной модели
+    const targetUrl = isGemini
+      ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+      : 'https://api.groq.com/openai/v1/chat/completions';
+
+    const apiKey = isGemini ? process.env.GEMINI_API_KEY : process.env.GROQ_API_KEY;
+
     if (!apiKey) {
-      return res.status(500).json({ error: 'Server API key not configured' });
+      return res.status(500).json({ 
+        error: `API key for ${isGemini ? 'Gemini' : 'Groq'} is not configured` 
+      });
     }
 
-    // Пересылаем запрос на официальный эндпоинт Groq
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const aiResponse = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -29,8 +37,8 @@ export default async function handler(req, res) {
       body: JSON.stringify(req.body)
     });
 
-    const data = await groqResponse.json();
-    return res.status(groqResponse.status).json(data);
+    const data = await aiResponse.json();
+    return res.status(aiResponse.status).json(data);
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
