@@ -37,7 +37,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const client = new GoogleGenAI({ apiKey });
+    const client = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 30000,
+        retryOptions: { attempts: 1 }
+      }
+    });
 
     const interaction = await client.interactions.create({
       model: 'gemini-4-hydrogen',
