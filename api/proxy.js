@@ -12,26 +12,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const model = req.body?.model || '';
-    const useAiGateway = model.startsWith('google/') || model.startsWith('gemini-');
+    const requestedModel = req.body?.model || '';
+    const isGemini = requestedModel.startsWith('google/') || requestedModel.startsWith('gemini-');
 
-    // Google/Gemini model IDs (including google/gemini-4-hydrogen) use Vercel AI Gateway.
-    // Keep the existing Groq route for all other model IDs.
-    const targetUrl = useAiGateway
-      ? 'https://ai-gateway.vercel.sh/v1/chat/completions'
+    // Google model IDs may arrive as "google/<model>" from the Android app.
+    // Google Gemini API expects the native model ID without the provider prefix.
+    const googleModel = requestedModel.startsWith('google/')
+      ? requestedModel.slice('google/'.length)
+      : requestedModel;
+
+    const targetUrl = isGemini
+      ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
       : 'https://api.groq.com/openai/v1/chat/completions';
 
-    const apiKey = useAiGateway
-      ? process.env.AI_GATEWAY_API_KEY
-      : process.env.GROQ_API_KEY;
+    const apiKey = isGemini ? process.env.GEMINI_API_KEY : process.env.GROQ_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({
-        error: useAiGateway
-          ? 'AI Gateway API key is not configured'
-          : 'Groq API key is not configured'
+        error: `API key for ${isGemini ? 'Gemini' : 'Groq'} is not configured`
       });
     }
+
+    const requestBody = isGemini
+      ? { ...req.body, model: googleModel }
+      : req.body;
 
     const aiResponse = await fetch(targetUrl, {
       method: 'POST',
@@ -39,7 +43,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(requestBody)
     });
 
     const responseText = await aiResponse.text();
