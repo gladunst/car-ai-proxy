@@ -13,18 +13,23 @@ export default async function handler(req, res) {
 
   try {
     const model = req.body?.model || '';
-    const isGemini = model.startsWith('gemini-');
+    const useAiGateway = model.startsWith('google/') || model.startsWith('gemini-');
 
-    // Выбираем целевой URL и ключ в зависимости от запрошенной модели
-    const targetUrl = isGemini
-      ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+    // Google/Gemini model IDs (including google/gemini-4-hydrogen) use Vercel AI Gateway.
+    // Keep the existing Groq route for all other model IDs.
+    const targetUrl = useAiGateway
+      ? 'https://ai-gateway.vercel.sh/v1/chat/completions'
       : 'https://api.groq.com/openai/v1/chat/completions';
 
-    const apiKey = isGemini ? process.env.GEMINI_API_KEY : process.env.GROQ_API_KEY;
+    const apiKey = useAiGateway
+      ? process.env.AI_GATEWAY_API_KEY
+      : process.env.GROQ_API_KEY;
 
     if (!apiKey) {
-      return res.status(500).json({ 
-        error: `API key for ${isGemini ? 'Gemini' : 'Groq'} is not configured` 
+      return res.status(500).json({
+        error: useAiGateway
+          ? 'AI Gateway API key is not configured'
+          : 'Groq API key is not configured'
       });
     }
 
@@ -37,10 +42,16 @@ export default async function handler(req, res) {
       body: JSON.stringify(req.body)
     });
 
-    const data = await aiResponse.json();
-    return res.status(aiResponse.status).json(data);
+    const responseText = await aiResponse.text();
+    let data;
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { error: 'Upstream returned a non-JSON response' };
+    }
 
+    return res.status(aiResponse.status).json(data);
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err?.message || 'Proxy request failed' });
   }
 }
